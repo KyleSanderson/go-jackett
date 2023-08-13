@@ -8,7 +8,7 @@ import (
 	"github.com/autobrr/go-qbittorrent/errors"
 )
 
-func (c *Client) GetIndexers(indexer string, opts map[string]string) (Indexers, error) {
+func (c *Client) GetIndexers() (Indexers, error) {
 	return c.GetIndexersCtx(context.Background())
 }
 
