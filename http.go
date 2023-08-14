@@ -13,9 +13,7 @@ import (
 	"github.com/avast/retry-go"
 )
 
-func (c *Client) getCtx(ctx context.Context, endpoint string, opts map[string]string) (*http.Response, error) {
-	reqUrl := c.buildUrl(endpoint, opts)
-
+func (c *Client) getRawCtx(ctx context.Context, reqUrl string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqUrl, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not build request")
@@ -32,6 +30,10 @@ func (c *Client) getCtx(ctx context.Context, endpoint string, opts map[string]st
 	}
 
 	return resp, nil
+}
+
+func (c *Client) getCtx(ctx context.Context, endpoint string, opts map[string]string) (*http.Response, error) {
+	return c.getRawCtx(ctx, c.buildUrl(endpoint, opts))
 }
 
 func (c *Client) postCtx(ctx context.Context, endpoint string, opts map[string]string) (*http.Response, error) {

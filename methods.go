@@ -64,3 +64,18 @@ func (c *Client) GetTorrentsCtx(ctx context.Context, indexer string, opts map[st
 	err = xml.Unmarshal(bodyBytes, &rss)
 	return rss, err
 }
+
+func (c *Client) GetEnclosure(enclosure string) ([]byte, error) {
+	return c.GetEnclosureCtx(context.Background(), enclosure)
+}
+
+func (c *Client) GetEnclosureCtx(ctx context.Context, enclosure string) ([]byte, error) {
+	resp, err := c.getRawCtx(ctx, enclosure)
+	if err != nil {
+		return nil, errors.Wrap(err, enclosure)
+	}
+
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
+}
