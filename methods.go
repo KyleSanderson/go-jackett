@@ -1,6 +1,7 @@
 package jackett
 
 import (
+	"bufio"
 	"context"
 	"encoding/xml"
 	"io"
@@ -30,12 +31,12 @@ func (c *Client) GetIndexersCtx(ctx context.Context) (Indexers, error) {
 
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ind, err
+	body := bufio.NewReader(resp.Body)
+	if _, err := body.Peek(0); err != nil && err != bufio.ErrBufferFull {
+		return ind, errors.Wrap(err, "unable to read body")
 	}
 
-	err = xml.Unmarshal(bodyBytes, &ind)
+	err = xml.NewDecoder(body).Decode(&ind)
 	return ind, err
 }
 
@@ -56,12 +57,12 @@ func (c *Client) GetTorrentsCtx(ctx context.Context, indexer string, opts map[st
 
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return rss, err
+	body := bufio.NewReader(resp.Body)
+	if _, err := body.Peek(0); err != nil && err != bufio.ErrBufferFull {
+		return rss, errors.Wrap(err, "unable to read body")
 	}
 
-	err = xml.Unmarshal(bodyBytes, &rss)
+	err = xml.NewDecoder(body).Decode(&rss)
 	return rss, err
 }
 
@@ -77,5 +78,5 @@ func (c *Client) GetEnclosureCtx(ctx context.Context, enclosure string) ([]byte,
 
 	defer resp.Body.Close()
 
-	return io.ReadAll(resp.Body)
+	return io.ReadAll(bufio.NewReader(resp.Body))
 }
