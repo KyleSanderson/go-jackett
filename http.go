@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/autobrr/go-qbittorrent/errors"
@@ -23,7 +22,6 @@ func (c *Client) getRawCtx(ctx context.Context, reqUrl string) (*http.Response, 
 		req.SetBasicAuth(c.cfg.BasicUser, c.cfg.BasicPass)
 	}
 
-	// try request and if fail run 10 retries
 	resp, err := c.retryDo(ctx, req)
 	if err != nil {
 		return nil, errors.Wrap(err, "error making get request: %v", reqUrl)
@@ -36,94 +34,44 @@ func (c *Client) getCtx(ctx context.Context, endpoint string, opts map[string]st
 	return c.getRawCtx(ctx, c.buildUrl(endpoint, opts))
 }
 
-func (c *Client) postCtx(ctx context.Context, endpoint string, opts map[string]string) (*http.Response, error) {
-	// add optional parameters that the user wants
-	form := url.Values{}
-	for k, v := range opts {
-		form.Add(k, v)
-	}
-
-	reqUrl := c.buildUrl(endpoint, nil)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqUrl, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, errors.Wrap(err, "could not build request")
-	}
-
-	if c.cfg.BasicUser != "" && c.cfg.BasicPass != "" {
-		req.SetBasicAuth(c.cfg.BasicUser, c.cfg.BasicPass)
-	}
-
-	// add the content-type so qbittorrent knows what to expect
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	// try request and if fail run 10 retries
-	resp, err := c.retryDo(ctx, req)
-	if err != nil {
-		return nil, errors.Wrap(err, "error making post request: %v", reqUrl)
-	}
-
-	return resp, nil
-}
-
-func (c *Client) postBasicCtx(ctx context.Context, endpoint string, opts map[string]string) (*http.Response, error) {
-	// add optional parameters that the user wants
-	form := url.Values{}
-	for k, v := range opts {
-		form.Add(k, v)
-	}
-
-	var resp *http.Response
-
-	reqUrl := c.buildUrl(endpoint, nil)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqUrl, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, errors.Wrap(err, "could not build request")
-	}
-
-	if c.cfg.BasicUser != "" && c.cfg.BasicPass != "" {
-		req.SetBasicAuth(c.cfg.BasicUser, c.cfg.BasicPass)
-	}
-
-	// add the content-type so qbittorrent knows what to expect
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err = c.http.Do(req)
-	if err != nil {
-		return nil, errors.Wrap(err, "error making post request: %v", reqUrl)
-	}
-
-	return resp, nil
-}
-
-func (c *Client) setCookies(cookies []*http.Cookie) {
-	cookieURL, _ := url.Parse(c.buildUrl("/", nil))
-
-	c.http.Jar.SetCookies(cookieURL, cookies)
-}
-
 func (c *Client) buildUrl(endpoint string, params map[string]string) string {
-	apiBase := "/api/v2.0/indexers/"
+	var joinedUrl string
 
-	// add query params
+	if c.cfg.DirectMode {
+		if endpoint != "" && endpoint != "/" {
+			joinedUrl, _ = url.JoinPath(c.cfg.Host, endpoint)
+		} else {
+			joinedUrl = c.cfg.Host
+		}
+	} else {
+		apiBase := "/api/v2.0/indexers/"
+		joinedUrl, _ = url.JoinPath(c.cfg.Host, apiBase, endpoint)
+	}
+
 	queryParams := url.Values{}
 	for key, value := range params {
 		queryParams.Add(key, value)
 	}
 
-	joinedUrl, _ := url.JoinPath(c.cfg.Host, apiBase, endpoint)
 	parsedUrl, _ := url.Parse(joinedUrl)
 	parsedUrl.RawQuery = queryParams.Encode()
 
-	// make into new string and return
 	return parsedUrl.String()
+}
+
+// drainAndClose drains and closes the response body to ensure HTTP connection reuse
+func drainAndClose(body io.ReadCloser) {
+	if body == nil {
+		return
+	}
+	// Drain the body to allow connection reuse
+	_, _ = io.Copy(io.Discard, body)
+	body.Close()
 }
 
 func copyBody(src io.ReadCloser) ([]byte, error) {
 	b, err := io.ReadAll(src)
 	if err != nil {
-		// ErrReadingRequestBody
 		return nil, err
 	}
 	src.Close()
@@ -154,7 +102,6 @@ func (c *Client) retryDo(ctx context.Context, req *http.Request) (*http.Response
 
 	var resp *http.Response
 
-	// try request and if fail run 10 retries
 	err = retry.Do(func() error {
 		resp, err = c.http.Do(req)
 
@@ -171,7 +118,6 @@ func (c *Client) retryDo(ctx context.Context, req *http.Request) (*http.Response
 		return err
 	},
 		retry.OnRetry(func(n uint, err error) { c.log.Printf("%q: attempt %d - %v\n", err, n, req.URL.String()) }),
-		//retry.Delay(time.Second*3),
 		retry.Attempts(5),
 		retry.MaxJitter(time.Second*1),
 	)
