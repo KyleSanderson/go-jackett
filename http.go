@@ -103,23 +103,35 @@ func (c *Client) retryDo(ctx context.Context, req *http.Request) (*http.Response
 	var resp *http.Response
 
 	err = retry.Do(func() error {
+		// Check if context is cancelled before attempting request
+		if req.Context().Err() != nil {
+			return retry.Unrecoverable(req.Context().Err())
+		}
+
 		resp, err = c.http.Do(req)
 
 		if err == nil {
+			// Success responses and client errors (4xx) are not retryable
 			if resp.StatusCode < 500 {
-				return err
-			} else if resp.StatusCode >= 500 {
-				return retry.Unrecoverable(errors.New("unrecoverable status: %v", resp.StatusCode))
+				return nil
 			}
+			// Server errors (5xx) should be retried
+			return errors.New("server error: %v", resp.StatusCode)
 		}
 
-		retry.Delay(time.Second * 3)
+		// If context is cancelled, don't retry
+		if req.Context().Err() != nil {
+			return retry.Unrecoverable(req.Context().Err())
+		}
 
+		// Network errors should be retried
 		return err
 	},
-		retry.OnRetry(func(n uint, err error) { c.log.Printf("%q: attempt %d - %v\n", err, n, req.URL.String()) }),
+		retry.OnRetry(func(n uint, err error) { c.log.Printf("attempt %d - %v: %s\n", n, err, req.URL.String()) }),
 		retry.Attempts(5),
+		retry.Delay(time.Second*3),
 		retry.MaxJitter(time.Second*1),
+		retry.Context(req.Context()),
 	)
 
 	if err != nil {
